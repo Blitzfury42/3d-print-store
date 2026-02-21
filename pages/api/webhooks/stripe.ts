@@ -11,13 +11,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const sig = req.headers['stripe-signature'];
         try {
             const event = stripe.webhooks.constructEvent(req.body, sig as string, endpointSecret);
+
             if (event.type === 'payment_intent.succeeded') {
                 const paymentIntent = event.data.object as any;
-                const orderId = paymentIntent.metadata.orderId;
+
                 await query('UPDATE orders SET status = $1 WHERE stripe_payment_id = $2', ['Paiement confirmé', paymentIntent.id]);
-                await query(`INSERT INTO order_statuses (order_id, status, message) VALUES ($1, $2, $3)`, [orderId, 'Paiement confirmé', 'Paiement reçu avec succès']);
                 const orderResult = await query('SELECT * FROM orders WHERE stripe_payment_id = $1', [paymentIntent.id]);
                 const order = orderResult.rows[0];
+
+                await query(`INSERT INTO order_statuses (order_id, status, message) VALUES ($1, $2, $3)`, [order.id, 'Paiement confirmé', 'Paiement reçu avec succès']);
                 await sendQuoteEmail(order);
             }
             res.status(200).json({ received: true });
